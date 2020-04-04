@@ -1,0 +1,9 @@
+./idea
+./appiumLogs
+./deviceLogs
+./log
+./target
+./test-output
+./appium.iml
+./status.html
+./test.txt
