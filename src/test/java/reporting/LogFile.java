@@ -104,6 +104,7 @@ public class LogFile extends TestContext {
         logStore.get(testName.get()).error(msg);
         if (ExtentReportManager.getTest() != null)
             ExtentReportManager.getTest().log(Status.FAIL, msg);
+            ExtentReportManager.getTest().log(Status.FAIL, MarkupHelper.createLabel(msg, ExtentColor.RED));
     }
 
     protected static void skip(String msg) {

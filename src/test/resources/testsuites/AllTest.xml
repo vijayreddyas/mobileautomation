@@ -5,8 +5,9 @@
     <parameter name="testEnvironment" value="QA"/>
     <test name="Test">
         <classes>
-            <class name="testscripts.Script1">
-            </class>
+            <class name="testscripts.HomeScreenTests" />
+            <class name="testscripts.LoginTest" />
+            <class name="testscripts.SettingsScreenTests" />
         </classes>
     </test>
 </suite>

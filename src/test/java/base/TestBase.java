@@ -4,22 +4,20 @@ import com.aventstack.extentreports.ExtentReports;
 import com.aventstack.extentreports.Status;
 import com.aventstack.extentreports.markuputils.ExtentColor;
 import com.aventstack.extentreports.markuputils.MarkupHelper;
-import helpers.AppiumServer;
-import helpers.CapabiliesManager;
-import helpers.CommonUtils;
-import helpers.FormatDates;
+import com.google.common.base.Throwables;
+import helpers.*;
 import io.appium.java_client.AppiumDriver;
 import io.appium.java_client.android.AndroidDriver;
 import io.appium.java_client.ios.IOSDriver;
 import org.apache.commons.io.FileUtils;
+import org.apache.xmlbeans.GDate;
+import org.openqa.selenium.OutputType;
+import org.openqa.selenium.TakesScreenshot;
 import org.openqa.selenium.logging.LogEntry;
 import org.testng.ITest;
 import org.testng.ITestContext;
 import org.testng.ITestResult;
-import org.testng.annotations.AfterMethod;
-import org.testng.annotations.AfterSuite;
-import org.testng.annotations.BeforeMethod;
-import org.testng.annotations.BeforeSuite;
+import org.testng.annotations.*;
 import reporting.ExtentReportManager;
 import reporting.LogFile;
 
@@ -32,24 +30,27 @@ import java.lang.reflect.Method;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.URL;
-import java.util.Date;
-import java.util.HashMap;
+import java.util.*;
 import java.util.List;
-import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 
 public class TestBase extends LogFile implements ITest {
     private ThreadLocal<List<LogEntry>> logEntries = new ThreadLocal<>();
     private ThreadLocal<PrintWriter> log_file_writer = new ThreadLocal<>();
-    public ThreadLocal<String> testName = new ThreadLocal<>();
-    public File logFile;
+    public static ThreadLocal<String> testName = new ThreadLocal<>();
+    public String date = FormatDates.getCurrentDateTime();
+    public static File logFile;
     URL hubUrl = null;
     private ExtentReports extent;
     public static long startTime;
     private String extentReportFilePath = System.getProperty("user.dir") + "/test-output/ExtentReport.html";
     public static Properties prop = new Properties();
-    public String platform;
+    public static String platform;
+    public static String testScope;
+    public static String testEnvironment;
+    private static ArrayList<String> tcNames = new ArrayList<>();
+    private static int totalNoOfTCsMarkedForExecution;
 
     /**
      * @throws IOException
@@ -61,7 +62,7 @@ public class TestBase extends LogFile implements ITest {
         FileInputStream fis = new FileInputStream(System.getProperty("user.dir") + "/src/test/resources/properties/base.properties");
         prop.load(fis);
         commonLog.info("[TestBase] Loaded the base property file");
-        String appiumServer = prop.getProperty("appium.server");
+       String appiumServer = prop.getProperty("appium.server");
         int port = CommonUtils.nextFreePort(4000, 5000);
         AppiumServer.startServer(appiumServer, port);
         commonLog.info("[TestBase] STARTED APPIUM SERVER WITH BELOW HOST AND PORT DETAILS");
@@ -148,6 +149,7 @@ public class TestBase extends LogFile implements ITest {
         commonLog.info("Inside After Method of TestBase");
         //endLogging(result.getTestName());
         if (result.getStatus() == ITestResult.FAILURE) {
+            ExtentReportManager.getTest().addScreencastFromPath(capturescreenshot(System.getProperty("user.dir") + "/screenshots/" + date + "/", result.getTestName()));
             ExtentReportManager.getTest().log(Status.FAIL, MarkupHelper.createLabel(result.getTestName() +
                     " - Test Case Failed", ExtentColor.RED));
         } else if (result.getStatus() == ITestResult.SKIP) {
@@ -219,22 +221,20 @@ public class TestBase extends LogFile implements ITest {
     }
 
     /**
-     *
      * @param methodName
      * @throws IOException
      */
     public void startLogging(String methodName) throws IOException {
         java.util.List<LogEntry> logcat = getDriver().manage().logs().get("logcat").filter(Level.ALL);
-        this.logEntries.set(logcat);
-        this.logFile = new File(System.getProperty("user.dir") + "/deviceLogs/" + methodName + ".log");
-        this.log_file_writer.set(new PrintWriter(this.logFile));
+        logEntries.set(logcat);
+        logFile = new File(System.getProperty("user.dir") + "/deviceLogs/" + methodName + ".log");
+        log_file_writer.set(new PrintWriter(this.logFile));
     }
 
     /**
      * @param methodName
-     * @throws Exception
      */
-    public void endLogging(String methodName) throws Exception {
+    public void endLogging(String methodName) {
         HashMap<String, String> logs = new HashMap<>();
         String adbPath = System.getProperty("user.dir") + "/deviceLogs/" + methodName + ".log";
         logs.put("adbLogs", adbPath);
@@ -258,5 +258,79 @@ public class TestBase extends LogFile implements ITest {
             e.printStackTrace();
             throw new RuntimeException("Generating file failed", e);
         }
+    }
+
+    @BeforeTest(alwaysRun = true)
+    public void setParameters() {
+        try {
+            // First looks for runtime parameters for scope & environment information
+            testScope = System.getProperty("testScope");
+            commonLog.info("Executing TCs from " + testScope + " categories");
+            testEnvironment = System.getProperty("testEnvironment");
+            commonLog.info("Executing TCs against " + testEnvironment + " environment");
+        } catch (Exception e) {
+            commonLog.error("Unable to resolve testScope & testEnvironment parameters to proceed with execution");
+            commonLog.error(e.getMessage());
+            commonLog.error("Terminating executing as critical information is not provided");
+            System.exit(1);
+        }
+    }
+
+    @DataProvider(parallel = false)
+    public Object[][] testData(Method method, ITestContext ctx) throws Exception {
+        commonLog.info("Inside testData Method of TestBase");
+        testName.set(method.getName());
+        try {
+            LinkedHashMap<String, LinkedHashMap<String, String>> testDataFetched = ExcelUtility.fetchDataForExecution
+                    (System.getProperty("user.dir") + "/src/test/resources/testdata/TEST_DATA.xlsx",
+                            testScope, testEnvironment, testName.get());
+            totalNoOfTCsMarkedForExecution = testDataFetched.size();
+            Object[][] testData = new Object[testDataFetched.size()][2];
+            int counter = 0;
+            for (String key : testDataFetched.keySet()) {
+                tcNames.add(key);
+                testData[counter][0] = key;
+                testData[counter][1] = testDataFetched.get(key);
+                counter += 1;
+            }
+            return testData;
+        } catch (Exception e) {
+            commonLog.error("Exception occurred while retrieving data from test data file, terminating execution");
+            commonLog.error(e.getMessage());
+            System.exit(1);
+            return null;
+        }
+    }
+
+    public String getTestScopeCategory(LinkedHashMap<String, String> testData) {
+        if (testScope.toUpperCase().contains("SMOKE") && testData.get("Smoke").equalsIgnoreCase("Y"))
+            return "SMOKE";
+        else if (testScope.toUpperCase().contains("SANITY") && testData.get("Sanity").equalsIgnoreCase("Y"))
+            return "SANITY";
+        else if (testScope.toUpperCase().contains("REGRESSION") && testData.get("Regression").equalsIgnoreCase("Y"))
+            return "REGRESSION";
+        return null;
+    }
+
+    /**
+     * capture screenshot of element & log into test report
+     *
+     * @param path_screenshot Path of the screenshot folder
+     * @param testCaseName    name of the testcase or any string to save the screenshot
+     * @return void
+     * @throws Exception
+     */
+    public String capturescreenshot(String path_screenshot, String testCaseName) {
+        String filename = "";
+        try {
+            File srcFile = ((TakesScreenshot) getDriver()).getScreenshotAs(OutputType.FILE);
+            filename = testCaseName;
+            File targetFile = new File(path_screenshot + filename + ".jpg");
+            FileUtils.copyFile(srcFile, targetFile);
+        } catch (Exception e) {
+            error("Failed while capturing screenshot");
+            error(Throwables.getStackTraceAsString(e));
+        }
+        return path_screenshot + filename + ".jpg";
     }
 }

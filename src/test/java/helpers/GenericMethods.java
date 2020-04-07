@@ -32,7 +32,7 @@ import java.util.UUID;
 public class GenericMethods extends TestBase {
 
     // common timeout for all tests can be set here
-    public final int timeOut = 120;
+    public final int timeOut = 30;
 
     /**
      * method verify whether element is present on screen
@@ -442,15 +442,20 @@ public class GenericMethods extends TestBase {
         return el;
     }
 
-    public MobileElement android_ScrollToText(String text) throws Exception {
-        info("Trying to scroll to element with text  - " + text);
-        MobileElement el =
-                (MobileElement)
-                        wait_until_MobileElementIs_Visible(
-                                MobileBy.AndroidUIAutomator(
-                                        "new UiScrollable(new UiSelector().scrollIntoView(text(\"" +
-                                                text + "\"));"));
-        return el;
+    /**
+     * Scroll to an element using its ID
+     *
+     * @param text text attribute of element
+     * @return MobileElement
+     * @throws Exception
+     */
+    public void android_scrollToTextAndClick(String text) throws Exception {
+        info("Trying to scroll to android element with text - " + text);
+        wait_until_MobileElementIs_Visible(
+                MobileBy.AndroidUIAutomator(
+                        "new UiScrollable(new UiSelector()).scrollIntoView(text(\""
+                                + text
+                                + "\"));")).click();
     }
 
     /**
@@ -831,7 +836,7 @@ public class GenericMethods extends TestBase {
     }
 
     public void hardWait(int seconds) throws InterruptedException {
-        Thread.sleep(seconds*1000);
+        Thread.sleep(seconds * 1000);
     }
 }
 

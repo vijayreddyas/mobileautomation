@@ -9,13 +9,13 @@ import java.util.LinkedHashMap;
 
 import static reporting.LogFile.commonLog;
 
+
 public class ExcelUtility {
 
     public static LinkedHashMap<String, LinkedHashMap<String, String>> fetchDataForExecution
-            (String dataSourcePath, String testingType, String testEnvironment) throws Exception {
+            (String dataSourcePath, String testingType, String testEnvironment, String testCase) throws Exception {
         LinkedHashMap<String, LinkedHashMap<String, String>> executionData = new LinkedHashMap<>();
-        LinkedHashMap<String, LinkedHashMap<String, String>> testCases_without_dependencies = new LinkedHashMap<>();
-        LinkedHashMap<String, LinkedHashMap<String, String>> testCases_with_dependencies = new LinkedHashMap<>();
+        LinkedHashMap<String, LinkedHashMap<String, String>> testCases = new LinkedHashMap<>();
         try {
             Fillo fillo = new Fillo();
             Connection connection = fillo.getConnection(dataSourcePath);
@@ -24,12 +24,12 @@ public class ExcelUtility {
                 commonLog.info("Retrieving TC details marked for execution under " + testCategory + " category");
                 //Fetch Test Cases for Execution
                 String strQuery = "Select * from Base where Execution = 'Y' and Environment = '" + testEnvironment + "'"
-                        + " and " + testCategory + " = 'Y'";
+                        + " and " + testCategory + " = 'Y'" + " and TestCaseName = '" + testCase + "'";
                 commonLog.info("Query to be executed is :: " + strQuery);
                 Recordset recordset = connection.executeQuery(strQuery);
                 ArrayList<String> columnNames = recordset.getFieldNames();
-
-                //For every TC marked for execution, fetch required Test Data from Module Sheets
+                Recordset scenarioRecordSet = null;
+                //For every TC marked for execution, fetch required Test Data from User & Module Sheets
                 while (recordset.next()) {
                     LinkedHashMap<String, String> data = new LinkedHashMap<>();
                     for (String field : columnNames) {
@@ -39,28 +39,21 @@ public class ExcelUtility {
                     //Fetch Test Data from Module Sheet & Update Test Data Map
                     String scenarioDataSelection = "Select * from " + data.get("Module") + " where TestCaseName = '" + data.
                             get("TestCaseName") + "' and Environment = '" + testEnvironment + "'";
-                    Recordset scenarioRecordSet = connection.executeQuery(scenarioDataSelection);
+                    scenarioRecordSet = connection.executeQuery(scenarioDataSelection);
                     ArrayList<String> scenarioColumnNames = scenarioRecordSet.getFieldNames();
                     while (scenarioRecordSet.next()) {
                         for (String field : scenarioColumnNames) {
                             data.put(field, scenarioRecordSet.getField(field));
                             if (field.equalsIgnoreCase(scenarioColumnNames.get(scenarioColumnNames.size() - 1))) {
-                                if (data.get("DependsOn").equalsIgnoreCase(""))
-                                    testCases_without_dependencies.put(data.get("TestCaseName"), data);
-                                else
-                                    testCases_with_dependencies.put(data.get("TestCaseName"), data);
-                                //executionData.put(data.get("TestCaseName"), data);
+                                testCases.put(data.get("TestCaseName"), data);
                             }
                         }
                     }
                 }
-                commonLog.info("Total No. Of Test Cases under " + testCategory + " are " + recordset.getCount());
-                commonLog.info("TCs & associated information for " + testCategory + " category are successfully " +
-                        "fetched");
+                commonLog.info("TC & associated information for test case " + testCase + " is fetched successfully");
                 recordset.close();
             }
-            executionData.putAll(testCases_without_dependencies);
-            executionData.putAll(testCases_with_dependencies);
+            executionData.putAll(testCases);
             connection.close();
         } catch (Exception e) {
             commonLog.error("Failed while reading data from Test Data Source");
